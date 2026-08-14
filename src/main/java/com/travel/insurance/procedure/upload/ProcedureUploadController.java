@@ -32,11 +32,6 @@ public class ProcedureUploadController {
         return ResponseEntity.ok(procedureUploadService.validate(file));
     }
 
-    @PostMapping("/upload/{uploadPublicId}/import")
-    public ResponseEntity<ProcedureImportResponse> importUpload(@PathVariable UUID uploadPublicId) {
-        return ResponseEntity.ok(procedureUploadService.importUpload(uploadPublicId));
-    }
-
     @GetMapping("/upload/{uploadPublicId}")
     public ResponseEntity<ProcedureUploadResponse> getUpload(@PathVariable UUID uploadPublicId) {
         return ResponseEntity.ok(procedureUploadService.getUpload(uploadPublicId));

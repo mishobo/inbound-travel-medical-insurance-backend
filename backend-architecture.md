@@ -466,6 +466,13 @@ Bulk creation is a synchronous two-stage Excel flow under
   before saving, generates a code per new procedure, sets the upload-batch id,
   and persists in batches (`hibernate.jdbc.batch_size`). A late uniqueness race
   surfaces as a `409`.
+- **Per-row result & storage**: each `ProcedureUploadRow` stores the cleaned
+  `procedure_name`, the submitted `department` and `description`, and the resolved
+  `department_public_id` — the raw submitted name and the normalized name are **not**
+  persisted (the normalized form is recomputed deterministically at import time for
+  the duplicate re-check). Both the validate and import responses expose a single
+  cleaned **`name`** per row (with `department`/`description` echoes and the row
+  status/error), consistent with the `name` field on the main procedure responses.
 - **Downloads**: `GET /upload/download` (cached static template bytes) and
   `GET /upload/{uploadPublicId}/errors` (failed/skipped rows only, with a Department column), both
   streamed as `.xlsx` attachments with the correct content type.

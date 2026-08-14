@@ -45,9 +45,9 @@ public class ProcedureUploadWorkbooks {
             for (ProcedureUploadRow row : rows) {
                 Row dataRow = sheet.createRow(rowIndex++);
                 dataRow.createCell(0).setCellValue(row.getExcelRowNumber());
-                dataRow.createCell(1).setCellValue(nullSafe(row.getSubmittedName()));
-                dataRow.createCell(2).setCellValue(nullSafe(row.getSubmittedDepartment()));
-                dataRow.createCell(3).setCellValue(nullSafe(row.getSubmittedDescription()));
+                dataRow.createCell(1).setCellValue(nullSafe(row.getProcedureName()));
+                dataRow.createCell(2).setCellValue(nullSafe(row.getDepartment()));
+                dataRow.createCell(3).setCellValue(nullSafe(row.getDescription()));
                 dataRow.createCell(4).setCellValue(row.getRowStatus() == null ? "" : row.getRowStatus().name());
                 dataRow.createCell(5).setCellValue(nullSafe(row.getErrorCode()));
                 dataRow.createCell(6).setCellValue(nullSafe(row.getErrorMessage()));

@@ -238,11 +238,9 @@ public class ProcedureUploadServiceImpl implements ProcedureUploadService {
         ProcedureUploadRow row = new ProcedureUploadRow();
         row.setUploadId(uploadId);
         row.setExcelRowNumber(prepared.raw().excelRowNumber());
-        row.setSubmittedName(prepared.raw().name());
-        row.setSubmittedDepartment(prepared.departmentRaw());
-        row.setSubmittedDescription(blankToNull(prepared.raw().description()));
-        row.setCleanedName(prepared.name().display());
-        row.setNormalizedName(prepared.name().isBlank() ? null : prepared.name().normalized());
+        row.setProcedureName(prepared.name().display());
+        row.setDepartment(prepared.departmentRaw());
+        row.setDescription(blankToNull(prepared.raw().description()));
         row.setDepartmentPublicId(prepared.departmentId());
         return row;
     }
@@ -270,27 +268,27 @@ public class ProcedureUploadServiceImpl implements ProcedureUploadService {
         }
     }
 
-    /** Re-checks the database for duplicates created since validation; returns rows still to create. */
     private List<ProcedureUploadRow> recheckDuplicates(List<ProcedureUploadRow> candidates) {
         Map<UUID, Set<String>> byDepartment = new HashMap<>();
         for (ProcedureUploadRow row : candidates) {
-            if (row.getDepartmentPublicId() != null && row.getNormalizedName() != null) {
+            String normalized = normalizedNameOf(row);
+            if (row.getDepartmentPublicId() != null && normalized != null) {
                 byDepartment.computeIfAbsent(row.getDepartmentPublicId(), key -> new HashSet<>())
-                        .add(row.getNormalizedName());
+                        .add(normalized);
             }
         }
         Map<String, Procedure> existing = loadExisting(byDepartment);
 
         List<ProcedureUploadRow> toCreate = new ArrayList<>();
         for (ProcedureUploadRow row : candidates) {
-            Procedure match = existing.get(duplicateKey(row.getDepartmentPublicId(), row.getNormalizedName()));
+            Procedure match = existing.get(duplicateKey(row.getDepartmentPublicId(), normalizedNameOf(row)));
             if (match != null && match.isActive()) {
                 result(row, ProcedureRowStatus.SKIPPED, ProcedureUploadErrorCode.ALREADY_EXISTS,
-                        "Row " + row.getExcelRowNumber() + ": \"" + row.getCleanedName()
+                        "Row " + row.getExcelRowNumber() + ": \"" + row.getProcedureName()
                                 + "\" already exists in this department.");
             } else if (match != null) {
                 result(row, ProcedureRowStatus.FAILED, ProcedureUploadErrorCode.INACTIVE_EXISTS,
-                        "Row " + row.getExcelRowNumber() + ": An inactive \"" + row.getCleanedName()
+                        "Row " + row.getExcelRowNumber() + ": An inactive \"" + row.getProcedureName()
                                 + "\" procedure exists in this department. Reactivate it instead.");
             } else {
                 toCreate.add(row);
@@ -309,8 +307,8 @@ public class ProcedureUploadServiceImpl implements ProcedureUploadService {
 
     private void persistChunk(List<ProcedureUploadRow> chunk, ProcedureUpload upload) {
         List<Procedure> procedures = chunk.stream().map(row -> procedureMapper.newProcedure(
-                new CleanedName(row.getCleanedName(), row.getNormalizedName()),
-                blankToNull(row.getSubmittedDescription()),
+                nameNormalizer.clean(row.getProcedureName()),
+                blankToNull(row.getDescription()),
                 row.getDepartmentPublicId(),
                 codeGenerator.next(),
                 upload.getId())).toList();
@@ -319,7 +317,7 @@ public class ProcedureUploadServiceImpl implements ProcedureUploadService {
             procedureRepository.flush();
             for (int i = 0; i < chunk.size(); i++) {
                 ProcedureUploadRow row = result(chunk.get(i), ProcedureRowStatus.CREATED, null, null);
-                row.setCreatedProcedurePublicId(saved.get(i).getId());
+                row.setProcedurePublicId(saved.get(i).getId());
             }
         } catch (DataIntegrityViolationException ex) {
             throw new IllegalStateException(
@@ -369,6 +367,12 @@ public class ProcedureUploadServiceImpl implements ProcedureUploadService {
 
     private String duplicateKey(UUID departmentId, String normalizedName) {
         return departmentId + "|" + normalizedName;
+    }
+
+    /** Recomputes the normalized (duplicate-detection) form from the stored procedure name. */
+    private String normalizedNameOf(ProcedureUploadRow row) {
+        return row.getProcedureName() == null ? null
+                : nameNormalizer.clean(row.getProcedureName()).normalized();
     }
 
     private boolean eligibleName(CleanedName name) {

@@ -14,14 +14,13 @@ public class ProcedureUploadMapper {
     public ProcedureUploadRowResult toRowResult(ProcedureUploadRow row) {
         return new ProcedureUploadRowResult(
                 row.getExcelRowNumber(),
-                row.getSubmittedName(),
-                row.getSubmittedDepartment(),
-                row.getSubmittedDescription(),
-                row.getCleanedName(),
+                row.getProcedureName(),
+                row.getDepartment(),
+                row.getDescription(),
                 row.getRowStatus(),
                 row.getErrorCode(),
                 row.getErrorMessage(),
-                row.getCreatedProcedurePublicId()
+                row.getProcedurePublicId()
         );
     }
 

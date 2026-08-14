@@ -34,11 +34,9 @@ public class ProcedureUploadRow extends BaseEntity {
     @Column(name = "excel_row_number", nullable = false)
     private int excelRowNumber;
 
-    private String submittedName;
-    private String submittedDepartment;
-    private String submittedDescription;
-    private String cleanedName;
-    private String normalizedName;
+    private String procedureName;
+    private String department;
+    private String description;
 
     @Column(name = "department_public_id")
     private UUID departmentPublicId;
@@ -51,5 +49,5 @@ public class ProcedureUploadRow extends BaseEntity {
     private String errorMessage;
 
     @Column(name = "created_procedure_public_id")
-    private UUID createdProcedurePublicId;
+    private UUID procedurePublicId;
 }

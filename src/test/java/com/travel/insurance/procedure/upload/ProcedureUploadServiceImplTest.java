@@ -78,13 +78,10 @@ class ProcedureUploadServiceImplTest {
         return procedure;
     }
 
-    private ProcedureUploadRow row(int number, String submitted, String normalized, UUID departmentId,
-                                   ProcedureRowStatus status) {
+    private ProcedureUploadRow row(int number, String name, UUID departmentId, ProcedureRowStatus status) {
         ProcedureUploadRow row = new ProcedureUploadRow();
         row.setExcelRowNumber(number);
-        row.setSubmittedName(submitted);
-        row.setCleanedName(submitted);
-        row.setNormalizedName(normalized);
+        row.setProcedureName(name);
         row.setDepartmentPublicId(departmentId);
         row.setRowStatus(status);
         return row;
@@ -125,6 +122,7 @@ class ProcedureUploadServiceImplTest {
         assertThat(response.readyForImport()).isTrue();
 
         assertThat(rowResult(response, 2).status()).isEqualTo(ProcedureRowStatus.VALID);
+        assertThat(rowResult(response, 2).name()).isEqualTo("Nebulization");
         assertThat(rowResult(response, 3).errorCode()).isEqualTo(ProcedureUploadErrorCode.DUPLICATE_IN_FILE.name());
         assertThat(rowResult(response, 3).errorMessage()).contains("first appeared in row 2");
         assertThat(rowResult(response, 4).errorCode()).isEqualTo(ProcedureUploadErrorCode.NAME_REQUIRED.name());
@@ -190,7 +188,7 @@ class ProcedureUploadServiceImplTest {
         when(uploadRepository.findById(uploadId)).thenReturn(Optional.of(upload));
         when(uploadRepository.saveAndFlush(any())).thenAnswer(inv -> inv.getArgument(0));
         when(rowRepository.findByUploadIdOrderByExcelRowNumberAsc(uploadId))
-                .thenReturn(List.of(row(2, "Nebulization", "NEBULIZATION", radiologyId, ProcedureRowStatus.VALID)));
+                .thenReturn(List.of(row(2, "Nebulization", radiologyId, ProcedureRowStatus.VALID)));
         when(procedureRepository.findByDepartmentPublicIdAndNormalizedNameIn(eq(radiologyId), anySet()))
                 .thenReturn(List.of());
         when(codeGenerator.next()).thenReturn("PRC-0001");
@@ -207,6 +205,7 @@ class ProcedureUploadServiceImplTest {
         assertThat(response.createdRows()).isEqualTo(1);
         assertThat(response.status()).isEqualTo(ProcedureUploadStatus.COMPLETED);
         assertThat(response.rows().get(0).status()).isEqualTo(ProcedureRowStatus.CREATED);
+        assertThat(response.rows().get(0).name()).isEqualTo("Nebulization");
         assertThat(response.rows().get(0).createdProcedurePublicId()).isNotNull();
         verify(procedureRepository).saveAll(any());
     }
@@ -245,7 +244,7 @@ class ProcedureUploadServiceImplTest {
         upload.setId(uploadId);
         when(uploadRepository.findById(uploadId)).thenReturn(Optional.of(upload));
         when(rowRepository.findByUploadIdAndRowStatusInOrderByExcelRowNumberAsc(eq(uploadId), any()))
-                .thenReturn(List.of(row(4, "", null, null, ProcedureRowStatus.FAILED)));
+                .thenReturn(List.of(row(4, "", null, ProcedureRowStatus.FAILED)));
 
         assertThat(service.errorReport(uploadId)).isNotEmpty();
     }
