@@ -2,7 +2,6 @@ package com.travel.insurance.procedure.upload;
 
 import com.travel.insurance.procedure.upload.dto.ProcedureImportResponse;
 import com.travel.insurance.procedure.upload.dto.ProcedureUploadResponse;
-import com.travel.insurance.procedure.upload.dto.ProcedureUploadValidationResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -28,8 +27,8 @@ public class ProcedureUploadController {
     private final ProcedureUploadService procedureUploadService;
 
     @PostMapping(path = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<ProcedureUploadValidationResponse> validate(@RequestParam("file") MultipartFile file) {
-        return ResponseEntity.ok(procedureUploadService.validate(file));
+    public ResponseEntity<ProcedureImportResponse> upload(@RequestParam("file") MultipartFile file) {
+        return ResponseEntity.ok(procedureUploadService.upload(file));
     }
 
     @GetMapping("/upload/{uploadPublicId}")

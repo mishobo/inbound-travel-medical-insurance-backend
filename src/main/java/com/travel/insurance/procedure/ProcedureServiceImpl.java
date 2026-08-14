@@ -66,15 +66,10 @@ public class ProcedureServiceImpl implements ProcedureService {
     public ProcedureResponse activate(UUID id) {
         Procedure procedure = getEntity(id);
         if (!procedure.isActive()) {
-            procedureRepository
-                    .findByDepartmentPublicIdAndNormalizedName(
-                            procedure.getDepartmentPublicId(), procedure.getNormalizedName())
+            procedureRepository.findByDepartmentPublicIdAndNormalizedName(procedure.getDepartmentPublicId(), procedure.getNormalizedName())
                     .filter(other -> !other.getId().equals(procedure.getId()) && other.isActive())
                     .ifPresent(other -> {
-                        throw new IllegalStateException(
-                                "An active procedure named \"" + procedure.getName()
-                                        + "\" already exists in this department");
-                    });
+                        throw new IllegalStateException("An active procedure named \"" + procedure.getName() + "\" already exists in this department");});
             procedure.setActive(true);
         }
         return procedureMapper.toResponse(save(procedure));

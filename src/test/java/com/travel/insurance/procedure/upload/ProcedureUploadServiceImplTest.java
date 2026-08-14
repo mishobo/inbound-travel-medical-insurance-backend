@@ -1,6 +1,5 @@
 package com.travel.insurance.procedure.upload;
 
-import com.travel.insurance.common.exception.ResourceNotFoundException;
 import com.travel.insurance.config.ProcedureUploadProperties;
 import com.travel.insurance.department.DepartmentService;
 import com.travel.insurance.procedure.Procedure;
@@ -11,7 +10,6 @@ import com.travel.insurance.procedure.ProcedureRepository;
 import com.travel.insurance.procedure.upload.ProcedureExcelParser.ProcedureExcelRow;
 import com.travel.insurance.procedure.upload.dto.ProcedureImportResponse;
 import com.travel.insurance.procedure.upload.dto.ProcedureUploadRowResult;
-import com.travel.insurance.procedure.upload.dto.ProcedureUploadValidationResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -29,7 +27,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -87,14 +84,25 @@ class ProcedureUploadServiceImplTest {
         return row;
     }
 
-    private ProcedureUploadRowResult rowResult(ProcedureUploadValidationResponse response, int excelRow) {
+    private ProcedureUploadRowResult rowResult(ProcedureImportResponse response, int excelRow) {
         return response.rows().stream()
                 .filter(r -> r.excelRowNumber() == excelRow)
                 .findFirst().orElseThrow();
     }
 
+    /** Stubs the persistence round-trip so uploads that reach the create step succeed. */
+    private void stubPersistence() {
+        when(uploadRepository.saveAndFlush(any())).thenAnswer(inv -> {
+            ProcedureUpload upload = inv.getArgument(0);
+            upload.setId(UUID.randomUUID());
+            return upload;
+        });
+        when(rowRepository.saveAll(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(uploadRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+    }
+
     @Test
-    void validateResolvesDepartmentsPerRowAndClassifiesRows() {
+    void uploadResolvesDepartmentsPerRowCreatesValidRowsAndClassifiesTheRest() {
         when(excelParser.parse(any())).thenReturn(List.of(
                 new ProcedureExcelRow(2, "Nebulization", "Radiology", "Aerosol"),
                 new ProcedureExcelRow(3, "NEBULIZATION", "radiology", ""),
@@ -105,24 +113,25 @@ class ProcedureUploadServiceImplTest {
         when(departmentService.idsByName(anySet())).thenReturn(Map.of("radiology", radiologyId));
         when(procedureRepository.findByDepartmentPublicIdAndNormalizedNameIn(eq(radiologyId), anySet()))
                 .thenReturn(List.of(existing("CHEST TUBE INSERTION", true, radiologyId)));
-        when(uploadRepository.saveAndFlush(any())).thenAnswer(inv -> {
-            ProcedureUpload upload = inv.getArgument(0);
-            upload.setId(UUID.randomUUID());
-            return upload;
+        when(codeGenerator.next()).thenReturn("PRC-0002");
+        when(procedureRepository.saveAll(any())).thenAnswer(inv -> {
+            List<Procedure> procedures = inv.getArgument(0);
+            procedures.forEach(procedure -> procedure.setId(UUID.randomUUID()));
+            return procedures;
         });
-        when(rowRepository.saveAll(any())).thenAnswer(inv -> inv.getArgument(0));
-        when(uploadRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        stubPersistence();
 
-        ProcedureUploadValidationResponse response = service.validate(file());
+        ProcedureImportResponse response = service.upload(file());
 
         assertThat(response.totalRows()).isEqualTo(6);
-        assertThat(response.validRows()).isEqualTo(1);
-        assertThat(response.existingDuplicates()).isEqualTo(1);
-        assertThat(response.invalidRows()).isEqualTo(4);
-        assertThat(response.readyForImport()).isTrue();
+        assertThat(response.createdRows()).isEqualTo(1);
+        assertThat(response.skippedRows()).isEqualTo(1);
+        assertThat(response.failedRows()).isEqualTo(4);
+        assertThat(response.status()).isEqualTo(ProcedureUploadStatus.COMPLETED_WITH_ERRORS);
 
-        assertThat(rowResult(response, 2).status()).isEqualTo(ProcedureRowStatus.VALID);
+        assertThat(rowResult(response, 2).status()).isEqualTo(ProcedureRowStatus.CREATED);
         assertThat(rowResult(response, 2).name()).isEqualTo("Nebulization");
+        assertThat(rowResult(response, 2).createdProcedurePublicId()).isNotNull();
         assertThat(rowResult(response, 3).errorCode()).isEqualTo(ProcedureUploadErrorCode.DUPLICATE_IN_FILE.name());
         assertThat(rowResult(response, 3).errorMessage()).contains("first appeared in row 2");
         assertThat(rowResult(response, 4).errorCode()).isEqualTo(ProcedureUploadErrorCode.NAME_REQUIRED.name());
@@ -130,11 +139,11 @@ class ProcedureUploadServiceImplTest {
         assertThat(rowResult(response, 6).errorCode()).isEqualTo(ProcedureUploadErrorCode.DEPARTMENT_NOT_FOUND.name());
         assertThat(rowResult(response, 6).errorMessage()).contains("Cardiology");
         assertThat(rowResult(response, 7).errorCode()).isEqualTo(ProcedureUploadErrorCode.DEPARTMENT_REQUIRED.name());
-        verify(procedureRepository, never()).saveAll(any());
+        verify(procedureRepository).saveAll(any());
     }
 
     @Test
-    void validateTreatsSameNameInDifferentDepartmentsAsDistinct() {
+    void uploadTreatsSameNameInDifferentDepartmentsAsDistinct() {
         UUID cardiologyId = UUID.randomUUID();
         when(excelParser.parse(any())).thenReturn(List.of(
                 new ProcedureExcelRow(2, "Nebulization", "Radiology", ""),
@@ -143,93 +152,38 @@ class ProcedureUploadServiceImplTest {
                 .thenReturn(Map.of("radiology", radiologyId, "cardiology", cardiologyId));
         when(procedureRepository.findByDepartmentPublicIdAndNormalizedNameIn(any(), anySet()))
                 .thenReturn(List.of());
-        when(uploadRepository.saveAndFlush(any())).thenAnswer(inv -> {
-            ProcedureUpload upload = inv.getArgument(0);
-            upload.setId(UUID.randomUUID());
-            return upload;
-        });
-        when(rowRepository.saveAll(any())).thenAnswer(inv -> inv.getArgument(0));
-        when(uploadRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-
-        ProcedureUploadValidationResponse response = service.validate(file());
-
-        assertThat(response.validRows()).isEqualTo(2);
-        assertThat(rowResult(response, 2).status()).isEqualTo(ProcedureRowStatus.VALID);
-        assertThat(rowResult(response, 3).status()).isEqualTo(ProcedureRowStatus.VALID);
-    }
-
-    @Test
-    void validateRejectsEmptyFile() {
-        MockMultipartFile empty = new MockMultipartFile("file", "procedures.xlsx", XLSX, new byte[0]);
-
-        assertThatThrownBy(() -> service.validate(empty))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("empty");
-    }
-
-    @Test
-    void validateRejectsNonXlsxFile() {
-        MockMultipartFile csv = new MockMultipartFile("file", "procedures.csv", "text/csv", new byte[]{1});
-
-        assertThatThrownBy(() -> service.validate(csv))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining(".xlsx");
-    }
-
-    @Test
-    void importCreatesProceduresForValidRows() {
-        UUID uploadId = UUID.randomUUID();
-        ProcedureUpload upload = new ProcedureUpload();
-        upload.setId(uploadId);
-        upload.setStatus(ProcedureUploadStatus.READY_FOR_IMPORT);
-        upload.setTotalRows(1);
-        upload.setValidRows(1);
-
-        when(uploadRepository.findById(uploadId)).thenReturn(Optional.of(upload));
-        when(uploadRepository.saveAndFlush(any())).thenAnswer(inv -> inv.getArgument(0));
-        when(rowRepository.findByUploadIdOrderByExcelRowNumberAsc(uploadId))
-                .thenReturn(List.of(row(2, "Nebulization", radiologyId, ProcedureRowStatus.VALID)));
-        when(procedureRepository.findByDepartmentPublicIdAndNormalizedNameIn(eq(radiologyId), anySet()))
-                .thenReturn(List.of());
-        when(codeGenerator.next()).thenReturn("PRC-0001");
+        when(codeGenerator.next()).thenReturn("PRC-0003");
         when(procedureRepository.saveAll(any())).thenAnswer(inv -> {
             List<Procedure> procedures = inv.getArgument(0);
             procedures.forEach(procedure -> procedure.setId(UUID.randomUUID()));
             return procedures;
         });
-        when(rowRepository.saveAll(any())).thenAnswer(inv -> inv.getArgument(0));
-        when(uploadRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        stubPersistence();
 
-        ProcedureImportResponse response = service.importUpload(uploadId);
+        ProcedureImportResponse response = service.upload(file());
 
-        assertThat(response.createdRows()).isEqualTo(1);
+        assertThat(response.createdRows()).isEqualTo(2);
         assertThat(response.status()).isEqualTo(ProcedureUploadStatus.COMPLETED);
-        assertThat(response.rows().get(0).status()).isEqualTo(ProcedureRowStatus.CREATED);
-        assertThat(response.rows().get(0).name()).isEqualTo("Nebulization");
-        assertThat(response.rows().get(0).createdProcedurePublicId()).isNotNull();
-        verify(procedureRepository).saveAll(any());
+        assertThat(rowResult(response, 2).status()).isEqualTo(ProcedureRowStatus.CREATED);
+        assertThat(rowResult(response, 3).status()).isEqualTo(ProcedureRowStatus.CREATED);
     }
 
     @Test
-    void importRejectsUploadThatIsNotReady() {
-        UUID uploadId = UUID.randomUUID();
-        ProcedureUpload upload = new ProcedureUpload();
-        upload.setId(uploadId);
-        upload.setStatus(ProcedureUploadStatus.COMPLETED);
-        when(uploadRepository.findById(uploadId)).thenReturn(Optional.of(upload));
+    void uploadRejectsEmptyFile() {
+        MockMultipartFile empty = new MockMultipartFile("file", "procedures.xlsx", XLSX, new byte[0]);
 
-        assertThatThrownBy(() -> service.importUpload(uploadId))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("already been imported");
+        assertThatThrownBy(() -> service.upload(empty))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("empty");
     }
 
     @Test
-    void importThrowsWhenUploadMissing() {
-        UUID uploadId = UUID.randomUUID();
-        when(uploadRepository.findById(uploadId)).thenReturn(Optional.empty());
+    void uploadRejectsNonXlsxFile() {
+        MockMultipartFile csv = new MockMultipartFile("file", "procedures.csv", "text/csv", new byte[]{1});
 
-        assertThatThrownBy(() -> service.importUpload(uploadId))
-                .isInstanceOf(ResourceNotFoundException.class);
+        assertThatThrownBy(() -> service.upload(csv))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining(".xlsx");
     }
 
     @Test

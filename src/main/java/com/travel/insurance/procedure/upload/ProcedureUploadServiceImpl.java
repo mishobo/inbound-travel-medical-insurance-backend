@@ -13,7 +13,6 @@ import com.travel.insurance.procedure.ProcedureRepository;
 import com.travel.insurance.procedure.upload.ProcedureExcelParser.ProcedureExcelRow;
 import com.travel.insurance.procedure.upload.dto.ProcedureImportResponse;
 import com.travel.insurance.procedure.upload.dto.ProcedureUploadResponse;
-import com.travel.insurance.procedure.upload.dto.ProcedureUploadValidationResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -31,17 +30,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-/**
- * Two-stage procedure Excel upload (validate then import) with per-row tracking.
- *
- * <p>Each spreadsheet row names its own department; the name is resolved to a
- * department id case-insensitively, in one bulk query for the whole file. The
- * duplicate rule (department + normalized name), name cleaning/normalization and
- * code generator are reused from manual creation; this class only adds file
- * parsing, bulk validation, batch persistence and row-level reporting.
- * Background/streaming processing for very large files is deferred — this path is
- * synchronous.
- */
 @Service
 @RequiredArgsConstructor
 @Transactional
@@ -60,7 +48,7 @@ public class ProcedureUploadServiceImpl implements ProcedureUploadService {
     private final ProcedureUploadProperties properties;
 
     @Override
-    public ProcedureUploadValidationResponse validate(MultipartFile file) {
+    public ProcedureImportResponse upload(MultipartFile file) {
         validateFile(file);
         List<ProcedureExcelRow> parsed = parse(file);
 
@@ -68,26 +56,10 @@ public class ProcedureUploadServiceImpl implements ProcedureUploadService {
         uploadRepository.saveAndFlush(upload);
 
         List<ProcedureUploadRow> rows = evaluateRows(parsed, upload.getId());
-        applyValidationCounts(upload, parsed.size(), rows);
-        rowRepository.saveAll(rows);
-        uploadRepository.save(upload);
+        upload.setTotalRows(parsed.size());
+        upload.setValidRows((int) count(rows, ProcedureRowStatus.VALID));
 
-        return uploadMapper.toValidationResponse(upload, rows);
-    }
-
-    @Override
-    public ProcedureImportResponse importUpload(UUID uploadPublicId) {
-        ProcedureUpload upload = getUploadEntity(uploadPublicId);
-        guardImportEligible(upload);
-        upload.setStatus(ProcedureUploadStatus.PROCESSING);
-        upload.setProcessingStartTime(Instant.now());
-        uploadRepository.saveAndFlush(upload);
-
-        List<ProcedureUploadRow> rows = rowRepository.findByUploadIdOrderByExcelRowNumberAsc(uploadPublicId);
-        List<ProcedureUploadRow> candidates = rows.stream()
-                .filter(row -> row.getRowStatus() == ProcedureRowStatus.VALID)
-                .toList();
-        List<ProcedureUploadRow> toCreate = recheckDuplicates(candidates);
+        List<ProcedureUploadRow> toCreate = rows.stream().filter(row -> row.getRowStatus() == ProcedureRowStatus.VALID).toList();
         createInBatches(toCreate, upload);
 
         applyImportCounts(upload, rows);
@@ -116,8 +88,6 @@ public class ProcedureUploadServiceImpl implements ProcedureUploadService {
                 uploadPublicId, List.of(ProcedureRowStatus.FAILED, ProcedureRowStatus.SKIPPED));
         return workbooks.errorReport(rows);
     }
-
-    // --- file / parsing ---
 
     private void validateFile(MultipartFile file) {
         if (file == null || file.isEmpty()) {
@@ -150,12 +120,11 @@ public class ProcedureUploadServiceImpl implements ProcedureUploadService {
     private ProcedureUpload newUpload(MultipartFile file) {
         ProcedureUpload upload = new ProcedureUpload();
         upload.setOriginalFilename(file.getOriginalFilename());
-        upload.setStatus(ProcedureUploadStatus.VALIDATING);
+        upload.setStatus(ProcedureUploadStatus.PROCESSING);
+        upload.setProcessingStartTime(Instant.now());
         upload.setUploadedBy(SecurityUtils.currentUserId().orElse(null));
         return upload;
     }
-
-    // --- validation ---
 
     private List<ProcedureUploadRow> evaluateRows(List<ProcedureExcelRow> parsed, UUID uploadId) {
         List<PreparedRow> prepared = prepare(parsed);
@@ -169,7 +138,6 @@ public class ProcedureUploadServiceImpl implements ProcedureUploadService {
         return rows;
     }
 
-    /** Cleans each row's name and resolves its department name to an id in one bulk query. */
     private List<PreparedRow> prepare(List<ProcedureExcelRow> parsed) {
         Set<String> departmentKeys = parsed.stream()
                 .map(raw -> departmentKey(raw.department()))
@@ -188,8 +156,7 @@ public class ProcedureUploadServiceImpl implements ProcedureUploadService {
         return prepared;
     }
 
-    private ProcedureUploadRow evaluateRow(PreparedRow prepared, UUID uploadId,
-                                           Map<String, Procedure> existing, Map<String, Integer> firstRowByKey) {
+    private ProcedureUploadRow evaluateRow(PreparedRow prepared, UUID uploadId, Map<String, Procedure> existing, Map<String, Integer> firstRowByKey) {
         ProcedureUploadRow row = baseRow(prepared, uploadId);
         CleanedName name = prepared.name();
         int excelRow = prepared.raw().excelRowNumber();
@@ -245,58 +212,6 @@ public class ProcedureUploadServiceImpl implements ProcedureUploadService {
         return row;
     }
 
-    private void applyValidationCounts(ProcedureUpload upload, int totalRows, List<ProcedureUploadRow> rows) {
-        upload.setTotalRows(totalRows);
-        upload.setValidRows((int) count(rows, ProcedureRowStatus.VALID));
-        upload.setSkippedRows((int) count(rows, ProcedureRowStatus.SKIPPED));
-        upload.setFailedRows((int) count(rows, ProcedureRowStatus.FAILED));
-        upload.setStatus(upload.getValidRows() > 0
-                ? ProcedureUploadStatus.READY_FOR_IMPORT : ProcedureUploadStatus.VALIDATION_FAILED);
-    }
-
-    // --- import ---
-
-    private void guardImportEligible(ProcedureUpload upload) {
-        switch (upload.getStatus()) {
-            case READY_FOR_IMPORT -> { /* eligible */ }
-            case PROCESSING -> throw new IllegalStateException(
-                    "Upload " + upload.getId() + " is already being processed");
-            case COMPLETED, COMPLETED_WITH_ERRORS -> throw new IllegalStateException(
-                    "Upload " + upload.getId() + " has already been imported");
-            default -> throw new IllegalStateException("Upload " + upload.getId()
-                    + " is not ready for import (status: " + upload.getStatus() + ")");
-        }
-    }
-
-    private List<ProcedureUploadRow> recheckDuplicates(List<ProcedureUploadRow> candidates) {
-        Map<UUID, Set<String>> byDepartment = new HashMap<>();
-        for (ProcedureUploadRow row : candidates) {
-            String normalized = normalizedNameOf(row);
-            if (row.getDepartmentPublicId() != null && normalized != null) {
-                byDepartment.computeIfAbsent(row.getDepartmentPublicId(), key -> new HashSet<>())
-                        .add(normalized);
-            }
-        }
-        Map<String, Procedure> existing = loadExisting(byDepartment);
-
-        List<ProcedureUploadRow> toCreate = new ArrayList<>();
-        for (ProcedureUploadRow row : candidates) {
-            Procedure match = existing.get(duplicateKey(row.getDepartmentPublicId(), normalizedNameOf(row)));
-            if (match != null && match.isActive()) {
-                result(row, ProcedureRowStatus.SKIPPED, ProcedureUploadErrorCode.ALREADY_EXISTS,
-                        "Row " + row.getExcelRowNumber() + ": \"" + row.getProcedureName()
-                                + "\" already exists in this department.");
-            } else if (match != null) {
-                result(row, ProcedureRowStatus.FAILED, ProcedureUploadErrorCode.INACTIVE_EXISTS,
-                        "Row " + row.getExcelRowNumber() + ": An inactive \"" + row.getProcedureName()
-                                + "\" procedure exists in this department. Reactivate it instead.");
-            } else {
-                toCreate.add(row);
-            }
-        }
-        return toCreate;
-    }
-
     private void createInBatches(List<ProcedureUploadRow> toCreate, ProcedureUpload upload) {
         int batchSize = Math.max(1, properties.getBatchSize());
         for (int start = 0; start < toCreate.size(); start += batchSize) {
@@ -334,9 +249,6 @@ public class ProcedureUploadServiceImpl implements ProcedureUploadService {
         upload.setCompletionTime(Instant.now());
     }
 
-    // --- shared helpers ---
-
-    /** Groups the eligible rows' normalized names by their resolved department id. */
     private Map<UUID, Set<String>> groupNormalizedByDepartment(List<PreparedRow> prepared) {
         Map<UUID, Set<String>> byDepartment = new HashMap<>();
         for (PreparedRow row : prepared) {
@@ -348,7 +260,6 @@ public class ProcedureUploadServiceImpl implements ProcedureUploadService {
         return byDepartment;
     }
 
-    /** One bulk query per department; keyed by department id + normalized name. */
     private Map<String, Procedure> loadExisting(Map<UUID, Set<String>> normalizedByDepartment) {
         Map<String, Procedure> existing = new HashMap<>();
         normalizedByDepartment.forEach((departmentId, names) -> {
@@ -369,18 +280,11 @@ public class ProcedureUploadServiceImpl implements ProcedureUploadService {
         return departmentId + "|" + normalizedName;
     }
 
-    /** Recomputes the normalized (duplicate-detection) form from the stored procedure name. */
-    private String normalizedNameOf(ProcedureUploadRow row) {
-        return row.getProcedureName() == null ? null
-                : nameNormalizer.clean(row.getProcedureName()).normalized();
-    }
-
     private boolean eligibleName(CleanedName name) {
         return !name.isBlank() && name.display().length() <= properties.getMaxNameLength();
     }
 
-    private ProcedureUploadRow result(ProcedureUploadRow row, ProcedureRowStatus status,
-                                      ProcedureUploadErrorCode code, String message) {
+    private ProcedureUploadRow result(ProcedureUploadRow row, ProcedureRowStatus status, ProcedureUploadErrorCode code, String message) {
         row.setRowStatus(status);
         row.setErrorCode(code == null ? null : code.name());
         row.setErrorMessage(message);

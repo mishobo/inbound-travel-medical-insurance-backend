@@ -3,7 +3,6 @@ package com.travel.insurance.procedure.upload;
 import com.travel.insurance.auth.JwtTokenProvider;
 import com.travel.insurance.procedure.upload.dto.ProcedureImportResponse;
 import com.travel.insurance.procedure.upload.dto.ProcedureUploadResponse;
-import com.travel.insurance.procedure.upload.dto.ProcedureUploadValidationResponse;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -22,7 +21,6 @@ import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -43,27 +41,15 @@ class ProcedureUploadControllerTest {
 
     @Test
     @WithMockUser
-    void validateReturnsSummary() throws Exception {
-        when(procedureUploadService.validate(any())).thenReturn(
-                new ProcedureUploadValidationResponse(UUID.randomUUID(), ProcedureUploadStatus.READY_FOR_IMPORT,
-                        3, 2, 1, 0, true, List.of()));
+    void uploadCreatesProceduresAndReturnsSummary() throws Exception {
+        when(procedureUploadService.upload(any())).thenReturn(
+                new ProcedureImportResponse(UUID.randomUUID(), ProcedureUploadStatus.COMPLETED,
+                        3, 2, 1, 0, List.of()));
         MockMultipartFile file = new MockMultipartFile("file", "procedures.xlsx", XLSX, new byte[]{1});
 
         mockMvc.perform(multipart("/api/v1/procedures/upload").file(file).with(csrf()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalRows").value(3))
-                .andExpect(jsonPath("$.readyForImport").value(true));
-    }
-
-    @Test
-    @WithMockUser
-    void importReturnsSummary() throws Exception {
-        UUID uploadId = UUID.randomUUID();
-        when(procedureUploadService.importUpload(uploadId)).thenReturn(
-                new ProcedureImportResponse(uploadId, ProcedureUploadStatus.COMPLETED, 2, 2, 0, 0, List.of()));
-
-        mockMvc.perform(post("/api/v1/procedures/upload/{id}/import", uploadId).with(csrf()))
-                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.createdRows").value(2))
                 .andExpect(jsonPath("$.status").value("COMPLETED"));
     }

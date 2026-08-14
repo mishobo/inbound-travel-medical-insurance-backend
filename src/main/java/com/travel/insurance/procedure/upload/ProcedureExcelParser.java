@@ -29,8 +29,7 @@ public class ProcedureExcelParser {
     private static final String DEPARTMENT_HEADER = "department";
     private static final String DESCRIPTION_HEADER = "description";
 
-    /** A single spreadsheet row. {@code excelRowNumber} is 1-based (as shown in Excel). */
-    public record ProcedureExcelRow(int excelRowNumber, String name, String department, String description) {
+  public record ProcedureExcelRow(int excelRowNumber, String name, String department, String description) {
     }
 
     public List<ProcedureExcelRow> parse(InputStream inputStream) {
@@ -99,7 +98,6 @@ public class ProcedureExcelParser {
     }
 
     private String normalizeHeader(String header) {
-        // Drop the required-field asterisk (e.g. "Procedure Name*") before matching.
-        return header == null ? "" : header.replace("*", "").trim().toLowerCase();
+       return header == null ? "" : header.replace("*", "").trim().toLowerCase();
     }
 }

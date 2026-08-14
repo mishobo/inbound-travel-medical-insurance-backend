@@ -442,7 +442,7 @@ flow above.
   paged/sortable), `PATCH /{id}/activate`, `PATCH /{id}/deactivate` (no hard
   delete in normal operation).
 
-Bulk creation is a synchronous two-stage Excel flow under
+Bulk creation is a synchronous single-stage Excel flow under
 `/api/v1/procedures/uploads` (`procedure.upload`):
 
 - The **department is chosen per row, inside the file**. The template is
@@ -453,26 +453,24 @@ Bulk creation is a synchronous two-stage Excel flow under
   (`DEPARTMENT_NOT_FOUND`) — departments are never auto-created. In-file and DB
   duplicate detection is keyed by **department + normalized name**, so the same
   name under two departments is not a duplicate.
-- **Validate** (`POST /upload`, multipart `file` only) reads the whole workbook once
-  (`ProcedureExcelParser`, preserving real Excel row numbers, formulas never
+- **Upload & import** (`POST /upload`, multipart `file` only) reads the whole workbook
+  once (`ProcedureExcelParser`, preserving real Excel row numbers, formulas never
   evaluated), detects in-file duplicates via in-memory maps, bulk-loads existing
   matches with one query, classifies each row (`VALID` / `SKIPPED` (already
   exists) / `FAILED` (name required, too long, duplicate-in-file, inactive
-  exists)), persists a `ProcedureUpload` + `ProcedureUploadRow` rows, and returns
-  a summary. No procedures are created.
-- **Import** (`POST /upload/{uploadPublicId}/import`) is guarded against repeat/parallel
-  runs by status transitions (`RECEIVED → VALIDATING → READY_FOR_IMPORT →
-  PROCESSING → COMPLETED[/_WITH_ERRORS]/FAILED`), re-checks duplicates immediately
-  before saving, generates a code per new procedure, sets the upload-batch id,
-  and persists in batches (`hibernate.jdbc.batch_size`). A late uniqueness race
-  surfaces as a `409`.
+  exists)), then **persists the valid rows immediately** — generating a code per new
+  procedure, setting the upload-batch id, and saving in batches
+  (`hibernate.jdbc.batch_size`). Validation and import run in **one transaction**
+  (`RECEIVED → PROCESSING → COMPLETED[/_WITH_ERRORS]/FAILED`), so a late uniqueness
+  race rolls the whole upload back and surfaces as a `409` rather than a partial
+  import. The response summarises created/skipped/failed counts with per-row detail.
 - **Per-row result & storage**: each `ProcedureUploadRow` stores the cleaned
   `procedure_name`, the submitted `department` and `description`, and the resolved
   `department_public_id` — the raw submitted name and the normalized name are **not**
-  persisted (the normalized form is recomputed deterministically at import time for
-  the duplicate re-check). Both the validate and import responses expose a single
-  cleaned **`name`** per row (with `department`/`description` echoes and the row
-  status/error), consistent with the `name` field on the main procedure responses.
+  persisted (the normalized form is recomputed deterministically from the cleaned
+  name where needed). The upload response exposes a single cleaned **`name`** per
+  row (with `department`/`description` echoes and the row status/error), consistent
+  with the `name` field on the main procedure responses.
 - **Downloads**: `GET /upload/download` (cached static template bytes) and
   `GET /upload/{uploadPublicId}/errors` (failed/skipped rows only, with a Department column), both
   streamed as `.xlsx` attachments with the correct content type.

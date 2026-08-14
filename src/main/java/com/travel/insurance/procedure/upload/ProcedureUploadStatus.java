@@ -1,8 +1,5 @@
 package com.travel.insurance.procedure.upload;
 
-/**
- * Lifecycle of a procedure Excel upload, from acceptance through to import.
- */
 public enum ProcedureUploadStatus {
     RECEIVED,
     VALIDATING,

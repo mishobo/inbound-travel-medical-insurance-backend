@@ -5,9 +5,6 @@ import com.travel.insurance.procedure.upload.ProcedureUploadStatus;
 import java.util.List;
 import java.util.UUID;
 
-/**
- * Final result of stage two (import).
- */
 public record ProcedureImportResponse(
         UUID uploadPublicId,
         ProcedureUploadStatus status,

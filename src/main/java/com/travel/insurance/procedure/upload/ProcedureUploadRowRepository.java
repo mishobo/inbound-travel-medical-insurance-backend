@@ -8,8 +8,5 @@ import java.util.UUID;
 
 public interface ProcedureUploadRowRepository extends JpaRepository<ProcedureUploadRow, UUID> {
 
-    List<ProcedureUploadRow> findByUploadIdOrderByExcelRowNumberAsc(UUID uploadId);
-
-    List<ProcedureUploadRow> findByUploadIdAndRowStatusInOrderByExcelRowNumberAsc(
-            UUID uploadId, Collection<ProcedureRowStatus> rowStatuses);
+    List<ProcedureUploadRow> findByUploadIdAndRowStatusInOrderByExcelRowNumberAsc(UUID uploadId, Collection<ProcedureRowStatus> rowStatuses);
 }

@@ -3,7 +3,6 @@ package com.travel.insurance.procedure.upload;
 import com.travel.insurance.procedure.upload.dto.ProcedureImportResponse;
 import com.travel.insurance.procedure.upload.dto.ProcedureUploadResponse;
 import com.travel.insurance.procedure.upload.dto.ProcedureUploadRowResult;
-import com.travel.insurance.procedure.upload.dto.ProcedureUploadValidationResponse;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -21,20 +20,6 @@ public class ProcedureUploadMapper {
                 row.getErrorCode(),
                 row.getErrorMessage(),
                 row.getProcedurePublicId()
-        );
-    }
-
-    public ProcedureUploadValidationResponse toValidationResponse(
-            ProcedureUpload upload, List<ProcedureUploadRow> rows) {
-        return new ProcedureUploadValidationResponse(
-                upload.getId(),
-                upload.getStatus(),
-                upload.getTotalRows(),
-                upload.getValidRows(),
-                upload.getSkippedRows(),
-                upload.getFailedRows(),
-                upload.getStatus() == ProcedureUploadStatus.READY_FOR_IMPORT,
-                rows.stream().map(this::toRowResult).toList()
         );
     }
 

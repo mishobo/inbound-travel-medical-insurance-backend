@@ -5,9 +5,6 @@ import com.travel.insurance.procedure.upload.ProcedureUploadStatus;
 import java.time.Instant;
 import java.util.UUID;
 
-/**
- * Traceable view of an upload from validation through completion.
- */
 public record ProcedureUploadResponse(
         UUID uploadPublicId,
         String originalFilename,

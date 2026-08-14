@@ -14,11 +14,6 @@ import org.hibernate.annotations.SQLRestriction;
 
 import java.util.UUID;
 
-/**
- * One spreadsheet row and its validation/import outcome, linked to a
- * {@link ProcedureUpload} by id (no JPA relationship). Preserves the actual Excel
- * row number for traceable error reporting.
- */
 @Entity
 @Table(name = "procedure_upload_rows")
 @SQLDelete(sql = "update procedure_upload_rows set deleted = true, deleted_date = now() where id = ?")

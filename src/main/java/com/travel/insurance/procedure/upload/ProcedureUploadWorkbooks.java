@@ -10,11 +10,6 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.List;
 
-/**
- * Generates the lightweight upload template and the error report workbooks. The
- * template is static, so its bytes are built once and cached. Both use plain
- * headers and data rows — no styling, formulas, images or auto-sizing.
- */
 @Component
 public class ProcedureUploadWorkbooks {
 
