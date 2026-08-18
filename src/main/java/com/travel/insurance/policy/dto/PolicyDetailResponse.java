@@ -6,13 +6,12 @@ import com.travel.insurance.policy.PolicyType;
 
 import java.time.Instant;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 
 public record PolicyDetailResponse(
         UUID id,
         String policyNumber,
-        Set<UUID> insurerIds,
+        UUID insurerId,
         PolicyType policyType,
         PolicyStatus status,
         List<BenefitResponse> benefits,
@@ -24,7 +23,7 @@ public record PolicyDetailResponse(
         return new PolicyDetailResponse(
                 policy.id(),
                 policy.policyNumber(),
-                policy.insurerIds(),
+                policy.insurerId(),
                 policy.policyType(),
                 policy.status(),
                 benefits,

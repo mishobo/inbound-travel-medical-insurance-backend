@@ -97,18 +97,11 @@ public class VisitorActivatedNotificationListener {
                     visitorId);
         }
 
-        List<InsurerResponse> insurers = policy.getInsurerIds().stream()
-                .map(insurerService::getById)
-                .toList();
-        List<String> insurerNames = insurers.stream()
-                .map(InsurerResponse::name)
-                .toList();
-        String underwriterLogoUrl = insurers.stream()
-                .map(InsurerResponse::logoUrl)
-                .filter(url -> url != null && !url.isBlank())
-                .map(LogoUrlNormalizer::normalize)
-                .findFirst()
-                .orElse(null);
+        InsurerResponse insurer = insurerService.getById(policy.getInsurerId());
+        List<String> insurerNames = List.of(insurer.name());
+        String underwriterLogoUrl = insurer.logoUrl() != null && !insurer.logoUrl().isBlank()
+                ? LogoUrlNormalizer.normalize(insurer.logoUrl())
+                : null;
         List<BenefitLine> benefitLines = visitorBenefits.stream()
                 .map(vb -> new BenefitLine(vb.benefitName(), vb.limitAmount()))
                 .toList();

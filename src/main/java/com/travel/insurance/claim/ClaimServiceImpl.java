@@ -191,7 +191,7 @@ public class ClaimServiceImpl implements ClaimService {
         Policy policy = policyService.getEntityById(request.policyId());
         benefitService.getEntityById(request.benefitId());
         
-        UUID insurerId = singleInsurer(policy);
+        UUID insurerId = policy.getInsurerId();
         if (!insurerService.exists(insurerId)) {
             throw new ResourceNotFoundException("Insurer", insurerId);
         }
@@ -207,15 +207,6 @@ public class ClaimServiceImpl implements ClaimService {
             request.invoiceIds().forEach(invoiceService::getEntityById);
         }
         return insurerId;
-    }
-
-    private static UUID singleInsurer(Policy policy) {
-        Set<UUID> insurerIds = policy.getInsurerIds();
-        if (insurerIds.size() != 1) {
-            throw new IllegalStateException(
-                    "Policy must cover exactly one insurer to create a claim, found: " + insurerIds.size());
-        }
-        return insurerIds.iterator().next();
     }
 
     private void applyBaseConversion(Claim claim) {
@@ -264,7 +255,7 @@ public class ClaimServiceImpl implements ClaimService {
         eventPublisher.publish(RabbitConfig.CLAIM_APPROVED_KEY, Map.of(
                 "claimId", claim.getId().toString(),
                 "policyId", claim.getPolicyId().toString(),
-                "insurerIds", policy.getInsurerIds().stream().map(UUID::toString).toList(),
+                "insurerId", policy.getInsurerId().toString(),
                 "approvedAmount", claim.getApprovedAmount().toPlainString(),
                 "status", claim.getStatus().name()));
     }

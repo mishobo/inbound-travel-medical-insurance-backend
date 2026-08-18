@@ -11,7 +11,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -47,7 +46,7 @@ class PolicyServiceImplTest {
     }
 
     private PolicyRequest requestWithType(PolicyType policyType, PolicyStatus status) {
-        return new PolicyRequest("POL-001", Set.of(insurerId), policyType, status);
+        return new PolicyRequest("POL-001", insurerId, policyType, status);
     }
 
     @Test
@@ -97,12 +96,12 @@ class PolicyServiceImplTest {
     void listByInsurerIdReturnsPoliciesBackedByThatInsurer() {
         Policy policy = policyMapper.toEntity(requestWithType(PolicyType.SINGLE_ENTRY_UP_TO_30_DAYS, null));
         policy.setId(UUID.randomUUID());
-        when(policyRepository.findAllByInsurerIdsContains(insurerId)).thenReturn(List.of(policy));
+        when(policyRepository.findAllByInsurerId(insurerId)).thenReturn(List.of(policy));
 
         List<PolicyResponse> responses = policyService.listByInsurerId(insurerId);
 
         assertThat(responses).hasSize(1);
-        assertThat(responses.getFirst().insurerIds()).contains(insurerId);
+        assertThat(responses.getFirst().insurerId()).isEqualTo(insurerId);
     }
 
     @Test

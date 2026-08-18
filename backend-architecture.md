@@ -132,7 +132,7 @@ com.travel.insurance/
 │   ├── PolicyService.java                  # Interface
 │   ├── PolicyServiceImpl.java
 │   ├── PolicyRepository.java
-│   ├── Policy.java                         # insurerIds (set), policyType
+│   ├── Policy.java                         # insurerId, policyType
 │   ├── PolicyStatus.java                   # Enum: DRAFT, ACTIVE, EXPIRED, CANCELLED
 │   ├── PolicyType.java                     # Enum: SINGLE_ENTRY_UP_TO_30_DAYS,
 │   │                                       #       SINGLE_ENTRY_31_TO_60_DAYS,
@@ -360,8 +360,8 @@ Policy
                                             MedicalServiceService — no JPA relation)
 ```
 
-- A **Policy** is the insurance contract. It references a set of backing
-  insurers (`insurerIds`) and carries a `policyType` and a status, but no
+- A **Policy** is the insurance contract. It references a single backing
+  insurer (`insurerId`) and carries a `policyType` and a status, but no
   cover dates of its own — one policy covers many visitors, each entering
   and leaving on their own schedule, so a fixed date range doesn't belong at
   the policy level. `policyType` is one of the three cover periods mandated
@@ -560,8 +560,8 @@ Policy
   status is `OPEN` via `PUT /api/v1/claims/{id}/invoice` (`AttachInvoiceRequest`); attaching
   transitions the claim to `SUBMITTED`. Attaching to any other status returns 409 Conflict
   (`IllegalStateException`). The claim's `insurerId` is **not** accepted
-  on the request: it is derived server-side from the policy, which must cover
-  exactly one insurer (409 otherwise). `ClaimResponse` embeds the full
+  on the request: it is derived server-side from the policy's single
+  `insurerId`. `ClaimResponse` embeds the full
   `visitor`, `insurer`, `invoices`, `diagnoses` and `procedures` objects —
   `diagnoses` resolved through `Icd11CodeService`, `procedures` through
   `ProcedureService`, `invoices` through `InvoiceService` — alongside the raw
@@ -679,8 +679,8 @@ entities:
   `ServiceProvider`). This is a plain column, **not** a JPA relation, so the
   `user` package stays decoupled from `insurer` and `serviceprovider`.
 - Data scoping is enforced in the service layer: for example, an
-  `INSURER_USER` may only see policies and claims where
-  `insurerIds` contains `user.organizationId`. Roles gate *which endpoints* a user can
+  `INSURER_USER` may only see policies and claims whose
+  `insurerId` equals `user.organizationId`. Roles gate *which endpoints* a user can
   call; `organizationId` gates *which rows* they can see.
 - The `auth` feature owns login and JWT concerns and depends on `user`
   (service → service); `config/SecurityConfig` wires the JWT filter and
@@ -774,7 +774,7 @@ The system enforces **per-insurer policy quotas** to prevent insurers from overs
 **Concept:**
 - Each `Insurer` is allocated a fixed number of policies via `policyToken` (e.g., 1000 policies for Minet Insurance)
 - When a `Visitor` is created using a policy backed by an insurer, that insurer's available quota decreases by 1
-- The system prevents visitor creation if any backing insurer has exhausted their quota (policyToken ≤ 0)
+- The system prevents visitor creation if the policy's backing insurer has exhausted their quota (policyToken ≤ 0)
 - If a visitor is deleted, the quota is restored
 
 **Data Model:**
@@ -784,14 +784,14 @@ The system enforces **per-insurer policy quotas** to prevent insurers from overs
 **Event-Driven Flow:**
 
 1. **Visitor Creation → Policy Consumption**
-   - `VisitorServiceImpl.create()` validates that all backing insurers have `policyToken > 0`
+   - `VisitorServiceImpl.create()` validates that the backing insurer has `policyToken > 0`
    - If validation passes, visitor is saved and `VisitorCreatedEvent` is published
-   - `PolicyConsumptionListener` receives the event and decrements `policyToken` for each backing insurer
+   - `PolicyConsumptionListener` receives the event and decrements `policyToken` for the backing insurer
    - Example: Minet Insurance 1000 → 999 when first visitor is created
 
 2. **Visitor Deletion → Policy Restoration**
    - `VisitorServiceImpl.delete()` soft-deletes the visitor and publishes `VisitorDeletedEvent`
-   - `PolicyRestorationListener` receives the event and restores (increments) `policyToken` for each backing insurer
+   - `PolicyRestorationListener` receives the event and restores (increments) `policyToken` for the backing insurer
    - Example: Minet Insurance 999 → 1000 when that visitor is deleted
 
 3. **Quota Exhaustion**
@@ -803,9 +803,9 @@ The system enforces **per-insurer policy quotas** to prevent insurers from overs
 
 | Component | Responsibility |
 |-----------|-----------------|
-| `PolicyConsumptionListener` | Listens to `VisitorCreatedEvent`; decrements `policyToken` for all backing insurers |
-| `PolicyRestorationListener` | Listens to `VisitorDeletedEvent`; restores `policyToken` for all backing insurers |
-| `VisitorServiceImpl.validatePolicyQuota()` | Pre-creation validation; checks all insurers have available policies |
+| `PolicyConsumptionListener` | Listens to `VisitorCreatedEvent`; decrements `policyToken` for the backing insurer |
+| `PolicyRestorationListener` | Listens to `VisitorDeletedEvent`; restores `policyToken` for the backing insurer |
+| `VisitorServiceImpl.validatePolicyQuota()` | Pre-creation validation; checks the backing insurer has available policies |
 | `VisitorServiceImpl.delete()` | Publishes `VisitorDeletedEvent` after soft-delete |
 | `InsurerResponse.availablePolicies` | Exposes quota count in API responses for admin monitoring |
 
@@ -823,7 +823,7 @@ POST /api/v1/insurers
 POST /api/v1/policies
 {
   "policyNumber": "POL-001",
-  "insurerIds": ["<insurer-id>"],
+  "insurerId": "<insurer-id>",
   "policyType": "SINGLE_ENTRY_UP_TO_30_DAYS",
   "status": "ACTIVE"
 }
@@ -844,18 +844,6 @@ GET /api/v1/insurers/<insurer-id>
 POST /api/v1/visitors
 # 400 Bad Request: "Insurer 'Minet Insurance' has no available policies left"
 ```
-
-**Multi-Insurer Policies:**
-
-Policies can be backed by multiple insurers (via `insurerIds` collection). When a visitor is created:
-- ALL backing insurers' quotas are decremented
-- If ANY insurer has exhausted quota, visitor creation is rejected
-- All insurers must have available policies for the visitor to succeed
-
-Example:
-- Policy ABC backed by Insurer A (500 policies) and Insurer B (200 policies)
-- Creating a visitor decrements both: A: 500→499, B: 200→199
-- When B reaches 0 but A has 100+ left, visitor creation still fails because B is exhausted
 
 ## Messaging (RabbitMQ)
 

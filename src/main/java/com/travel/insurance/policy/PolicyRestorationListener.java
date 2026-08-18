@@ -9,12 +9,10 @@ import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.UUID;
-
 /**
- * Restores policy tokens for insurers when a visitor is deleted (soft-deleted).
- * When a visitor is removed from the system, each backing insurer's policy count
- * is incremented by 1, making that policy available for other travelers.
+ * Restores the policy token for a policy's backing insurer when a visitor is deleted
+ * (soft-deleted). When a visitor is removed from the system, the backing insurer's
+ * policy count is incremented by 1, making that policy available for other travelers.
  *
  * This maintains the integrity of the policy quota system by ensuring that
  * deleted visitors don't permanently consume policies.
@@ -33,8 +31,8 @@ public class PolicyRestorationListener {
     private final InsurerRepository insurerRepository;
 
     /**
-     * Listens for visitor deletion events and restores the policy tokens
-     * for all backing insurers of the policy the visitor was using.
+     * Listens for visitor deletion events and restores the policy token
+     * for the backing insurer of the policy the visitor was using.
      *
      * @param event the visitor deletion event containing visitor ID and policy ID
      */
@@ -45,25 +43,22 @@ public class PolicyRestorationListener {
                 .orElseThrow(() -> new IllegalStateException(
                         "Policy not found: " + event.policyId()));
 
-        // Restore policy token for each backing insurer
-        for (UUID insurerId : policy.getInsurerIds()) {
-            Insurer insurer = insurerRepository.findById(insurerId)
-                    .orElseThrow(() -> new IllegalStateException(
-                            "Insurer not found: " + insurerId));
+        Insurer insurer = insurerRepository.findById(policy.getInsurerId())
+                .orElseThrow(() -> new IllegalStateException(
+                        "Insurer not found: " + policy.getInsurerId()));
 
-            if (insurer.getPolicyToken() != null) {
-                long newToken = insurer.getPolicyToken() + 1;
-                insurer.setPolicyToken(newToken);
-                insurerRepository.save(insurer);
-                log.info("Policy restored for insurer: {}. Available tokens: {}",
-                        insurer.getName(), newToken);
-            } else {
-                // Initialize token to 1 if it was null
-                insurer.setPolicyToken(1L);
-                insurerRepository.save(insurer);
-                log.info("Policy token initialized for insurer: {}. Available tokens: 1",
-                        insurer.getName());
-            }
+        if (insurer.getPolicyToken() != null) {
+            long newToken = insurer.getPolicyToken() + 1;
+            insurer.setPolicyToken(newToken);
+            insurerRepository.save(insurer);
+            log.info("Policy restored for insurer: {}. Available tokens: {}",
+                    insurer.getName(), newToken);
+        } else {
+            // Initialize token to 1 if it was null
+            insurer.setPolicyToken(1L);
+            insurerRepository.save(insurer);
+            log.info("Policy token initialized for insurer: {}. Available tokens: 1",
+                    insurer.getName());
         }
     }
 }

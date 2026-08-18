@@ -2,6 +2,7 @@ package com.travel.insurance.visitor;
 
 import com.travel.insurance.common.crypto.BlindIndexService;
 import com.travel.insurance.common.exception.ResourceNotFoundException;
+import com.travel.insurance.insurer.Insurer;
 import com.travel.insurance.insurer.InsurerRepository;
 import com.travel.insurance.policy.Policy;
 import com.travel.insurance.policy.PolicyService;
@@ -53,6 +54,7 @@ class VisitorServiceImplTest {
     private VisitorServiceImpl visitorService;
 
     private UUID policyId;
+    private UUID insurerId;
     private VisitorRequest request;
 
     private static String hashOf(String passportNumber) {
@@ -66,6 +68,12 @@ class VisitorServiceImplTest {
         lenient().when(blindIndexService.hmac(anyString()))
                 .thenAnswer(invocation -> hashOf(invocation.getArgument(0)));
         policyId = UUID.randomUUID();
+        insurerId = UUID.randomUUID();
+        Insurer insurer = new Insurer();
+        insurer.setId(insurerId);
+        insurer.setName("Minet Insurance");
+        insurer.setPolicyToken(1000L);
+        lenient().when(insurerRepository.findById(insurerId)).thenReturn(Optional.of(insurer));
         request = new VisitorRequest(
                 policyId,
                 "Jane Traveler",
@@ -89,6 +97,7 @@ class VisitorServiceImplTest {
     private Policy policyOfType(PolicyType policyType) {
         Policy policy = new Policy();
         policy.setPolicyType(policyType);
+        policy.setInsurerId(insurerId);
         return policy;
     }
 

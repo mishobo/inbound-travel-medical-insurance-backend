@@ -104,7 +104,7 @@ class VisitorActivatedNotificationListenerTest {
         Policy policy = new Policy();
         policy.setPolicyNumber("POL-0001");
         policy.setPolicyType(PolicyType.IPMI_61_DAYS_TO_12_MONTHS);
-        policy.getInsurerIds().add(insurerId);
+        policy.setInsurerId(insurerId);
         return policy;
     }
 

@@ -113,7 +113,7 @@ class ClaimServiceImplTest {
     private Policy policyCoveredBy(UUID insurerId) {
         Policy policy = new Policy();
         policy.setId(policyId);
-        policy.getInsurerIds().add(insurerId);
+        policy.setInsurerId(insurerId);
         return policy;
     }
 
@@ -263,30 +263,6 @@ class ClaimServiceImplTest {
         assertThatThrownBy(() -> claimService.create(fullRequest()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Visitor does not belong to the claim's policy");
-        verify(claimRepository, never()).save(any());
-    }
-
-    @Test
-    void createRejectsPolicyWithoutInsurer() {
-        when(policyService.getEntityById(policyId)).thenReturn(new Policy());
-        when(benefitService.getEntityById(benefitId)).thenReturn(null);
-
-        assertThatThrownBy(() -> claimService.create(baseRequest()))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("exactly one insurer");
-        verify(claimRepository, never()).save(any());
-    }
-
-    @Test
-    void createRejectsPolicyWithMultipleInsurers() {
-        Policy policy = policyCoveredBy(insurerId);
-        policy.getInsurerIds().add(UUID.randomUUID());
-        when(policyService.getEntityById(policyId)).thenReturn(policy);
-        when(benefitService.getEntityById(benefitId)).thenReturn(null);
-
-        assertThatThrownBy(() -> claimService.create(baseRequest()))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("exactly one insurer");
         verify(claimRepository, never()).save(any());
     }
 

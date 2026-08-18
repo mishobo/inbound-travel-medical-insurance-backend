@@ -4,13 +4,12 @@ import com.travel.insurance.policy.PolicyStatus;
 import com.travel.insurance.policy.PolicyType;
 
 import java.time.Instant;
-import java.util.Set;
 import java.util.UUID;
 
 public record PolicyResponse(
         UUID id,
         String policyNumber,
-        Set<UUID> insurerIds,
+        UUID insurerId,
         PolicyType policyType,
         PolicyStatus status,
         Instant createdDate,

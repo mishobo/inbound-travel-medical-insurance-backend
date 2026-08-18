@@ -140,22 +140,20 @@ public class VisitorServiceImpl implements VisitorService {
     }
 
     /**
-     * Validates that all backing insurers of the policy have available policy tokens.
-     * Prevents visitor creation if any insurer has exhausted their quota.
+     * Validates that the policy's backing insurer has available policy tokens.
+     * Prevents visitor creation if the insurer has exhausted their quota.
      *
      * @param policy the policy to validate
-     * @throws IllegalStateException if any backing insurer has no available policies
+     * @throws IllegalStateException if the backing insurer has no available policies
      */
     private void validatePolicyQuota(Policy policy) {
-        for (UUID insurerId : policy.getInsurerIds()) {
-            Insurer insurer = insurerRepository.findById(insurerId)
-                    .orElseThrow(() -> new IllegalStateException(
-                            "Insurer not found: " + insurerId));
+        Insurer insurer = insurerRepository.findById(policy.getInsurerId())
+                .orElseThrow(() -> new IllegalStateException(
+                        "Insurer not found: " + policy.getInsurerId()));
 
-            if (insurer.getPolicyToken() == null || insurer.getPolicyToken() <= 0) {
-                throw new IllegalStateException(
-                        "Insurer '" + insurer.getName() + "' has no available policies left");
-            }
+        if (insurer.getPolicyToken() == null || insurer.getPolicyToken() <= 0) {
+            throw new IllegalStateException(
+                    "Insurer '" + insurer.getName() + "' has no available policies left");
         }
     }
 

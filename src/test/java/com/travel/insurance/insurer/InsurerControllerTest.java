@@ -18,7 +18,6 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -55,7 +54,7 @@ class InsurerControllerTest {
     }
 
     private PolicyResponse samplePolicy() {
-        return new PolicyResponse(UUID.randomUUID(), "POL-0001", Set.of(insurerId),
+        return new PolicyResponse(UUID.randomUUID(), "POL-0001", insurerId,
                 PolicyType.SINGLE_ENTRY_UP_TO_30_DAYS, PolicyStatus.ACTIVE, Instant.now(), Instant.now());
     }
 

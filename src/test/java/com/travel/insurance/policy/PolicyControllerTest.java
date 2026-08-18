@@ -19,7 +19,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -52,7 +51,7 @@ class PolicyControllerTest {
     private final UUID benefitId = UUID.randomUUID();
 
     private PolicyResponse samplePolicy() {
-        return new PolicyResponse(policyId, "POL-001", Set.of(UUID.randomUUID()),
+        return new PolicyResponse(policyId, "POL-001", UUID.randomUUID(),
                 PolicyType.IPMI_61_DAYS_TO_12_MONTHS, PolicyStatus.ACTIVE, Instant.now(), Instant.now());
     }
 
@@ -103,7 +102,7 @@ class PolicyControllerTest {
     void createReturnsCreated() throws Exception {
         when(policyService.create(any(PolicyRequest.class))).thenReturn(samplePolicy());
 
-        PolicyRequest request = new PolicyRequest("POL-001", Set.of(UUID.randomUUID()),
+        PolicyRequest request = new PolicyRequest("POL-001", UUID.randomUUID(),
                 PolicyType.IPMI_61_DAYS_TO_12_MONTHS, null);
 
         mockMvc.perform(post("/api/v1/policies")
@@ -117,7 +116,7 @@ class PolicyControllerTest {
     @Test
     @WithMockUser(roles = "ADMIN")
     void createRejectsMissingPolicyType() throws Exception {
-        PolicyRequest request = new PolicyRequest("POL-001", Set.of(UUID.randomUUID()), null, null);
+        PolicyRequest request = new PolicyRequest("POL-001", UUID.randomUUID(), null, null);
 
         mockMvc.perform(post("/api/v1/policies")
                         .with(csrf())

@@ -10,16 +10,13 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.HashSet;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -48,7 +45,7 @@ class PolicyConsumptionListenerTest {
         // Setup: Create policy with one insurer
         Policy policy = new Policy();
         policy.setId(policyId);
-        policy.setInsurerIds(Set.of(insurerId));
+        policy.setInsurerId(insurerId);
 
         Insurer insurer = new Insurer();
         insurer.setId(insurerId);
@@ -70,42 +67,11 @@ class PolicyConsumptionListenerTest {
     }
 
     @Test
-    void onVisitorCreatedHandlesMultipleInsurers() {
-        // Setup: Create policy with multiple insurers
-        UUID insurerId2 = UUID.randomUUID();
-        Policy policy = new Policy();
-        policy.setId(policyId);
-        policy.setInsurerIds(Set.of(insurerId, insurerId2));
-
-        Insurer insurer1 = new Insurer();
-        insurer1.setId(insurerId);
-        insurer1.setName("Insurer 1");
-        insurer1.setPolicyToken(500L);
-
-        Insurer insurer2 = new Insurer();
-        insurer2.setId(insurerId2);
-        insurer2.setName("Insurer 2");
-        insurer2.setPolicyToken(300L);
-
-        when(policyRepository.findById(policyId)).thenReturn(Optional.of(policy));
-        when(insurerRepository.findById(insurerId)).thenReturn(Optional.of(insurer1));
-        when(insurerRepository.findById(insurerId2)).thenReturn(Optional.of(insurer2));
-        when(insurerRepository.save(any(Insurer.class))).thenAnswer(invocation -> invocation.getArgument(0));
-
-        // Act: Fire visitor created event
-        VisitorCreatedEvent event = new VisitorCreatedEvent(visitorId, policyId);
-        listener.onVisitorCreated(event);
-
-        // Assert: Both insurers were updated (save called twice)
-        verify(insurerRepository, times(2)).save(any(Insurer.class));
-    }
-
-    @Test
     void onVisitorCreatedHandlesNullPolicyToken() {
         // Setup: Insurer with null policy token
         Policy policy = new Policy();
         policy.setId(policyId);
-        policy.setInsurerIds(Set.of(insurerId));
+        policy.setInsurerId(insurerId);
 
         Insurer insurer = new Insurer();
         insurer.setId(insurerId);
@@ -128,7 +94,7 @@ class PolicyConsumptionListenerTest {
         // Setup: Insurer with zero policy token
         Policy policy = new Policy();
         policy.setId(policyId);
-        policy.setInsurerIds(Set.of(insurerId));
+        policy.setInsurerId(insurerId);
 
         Insurer insurer = new Insurer();
         insurer.setId(insurerId);
@@ -164,7 +130,7 @@ class PolicyConsumptionListenerTest {
         // Setup: Policy exists but insurer doesn't
         Policy policy = new Policy();
         policy.setId(policyId);
-        policy.setInsurerIds(Set.of(insurerId));
+        policy.setInsurerId(insurerId);
 
         when(policyRepository.findById(policyId)).thenReturn(Optional.of(policy));
         when(insurerRepository.findById(insurerId)).thenReturn(Optional.empty());
@@ -181,7 +147,7 @@ class PolicyConsumptionListenerTest {
         // Setup: High initial token value
         Policy policy = new Policy();
         policy.setId(policyId);
-        policy.setInsurerIds(Set.of(insurerId));
+        policy.setInsurerId(insurerId);
 
         Insurer insurer = new Insurer();
         insurer.setId(insurerId);
