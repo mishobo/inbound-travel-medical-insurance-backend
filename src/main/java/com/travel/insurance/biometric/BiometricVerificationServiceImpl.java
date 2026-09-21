@@ -1,14 +1,13 @@
 package com.travel.insurance.biometric;
 
-import com.travel.insurance.biometric.client.EkYcClient;
-import com.travel.insurance.biometric.client.EkYcCreateRequest;
-import com.travel.insurance.biometric.client.EkYcEmbededResponse;
+import com.travel.insurance.biometric.client.BiometricMicroserviceClient;
+import com.travel.insurance.biometric.client.BiometricMicroserviceRequest;
+import com.travel.insurance.biometric.client.BiometricMicroserviceResponse;
 import com.travel.insurance.biometric.dto.BiometricCallbackPayload;
 import com.travel.insurance.biometric.dto.BiometricVerificationRequest;
 import com.travel.insurance.biometric.dto.BiometricVerificationResponse;
 import com.travel.insurance.common.exception.ResourceNotFoundException;
 import com.travel.insurance.common.messaging.EventPublisher;
-import com.travel.insurance.config.EkYcProperties;
 import com.travel.insurance.config.RabbitConfig;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,28 +24,20 @@ import java.util.UUID;
 @Transactional
 public class BiometricVerificationServiceImpl implements BiometricVerificationService {
 
-    private static final String EKYC_REASON = "Medical Care";
-    private static final String EKYC_AGENT_ID_NUMBER = "27927159";
-    private static final String EKYC_AGENT_ID_TYPE = "citizen";
-    private static final int EKYC_EXPIRES_IN_SECONDS = 3600;
-    private static final String EKYC_SERVICE_ID = "default";
-    private static final int EKYC_TOTAL_ATTEMPTS = 4;
-    private static final String EKYC_REQUEST_MODE = "embeded";
-    private static final int EKYC_POOR_QUALITY_RESULT_ATTEMPTS = 3;
-    private static final String EKYC_LOCATION_NAME = "13110-Nairobi Hospital";
-    private static final String EKYC_DEVICE_ID = "";
-    private static final String EKYC_DEVICE_NAME = "";
-
     private final BiometricVerificationRepository repository;
     private final BiometricVerificationMapper mapper;
-    private final EkYcClient ekycClient;
-    private final EkYcProperties properties;
+    private final BiometricMicroserviceClient microserviceClient;
     private final EventPublisher eventPublisher;
 
     @Override
     public BiometricVerificationResponse create(BiometricVerificationRequest request) {
         BiometricVerification verification = repository.save(mapper.toEntity(request));
-        EkYcEmbededResponse embeded = ekycClient.createEmbededRequest(buildEkYcRequest(verification));
+        BiometricMicroserviceResponse embeded = microserviceClient.createVerification(
+                new BiometricMicroserviceRequest(
+                        verification.getSubjectIdNumber(),
+                        verification.getSubjectIdType(),
+                        verification.getWorkstationId(),
+                        verification.getId().toString()));
         verification.setEkycRequestId(embeded.requestId());
         verification.setEmbededToken(embeded.embededToken());
         verification.setEmbededExpiry(embeded.embededExpiry());
@@ -115,7 +106,7 @@ public class BiometricVerificationServiceImpl implements BiometricVerificationSe
         if (verification.getEkycRequestId() == null) {
             throw new IllegalStateException("Biometric verification has no eKYC request id yet");
         }
-        return ekycClient.resendCallback(verification.getEkycRequestId());
+        return microserviceClient.resendCallback(verification.getEkycRequestId());
     }
 
     @Override
@@ -123,26 +114,5 @@ public class BiometricVerificationServiceImpl implements BiometricVerificationSe
     public BiometricVerification getEntityById(UUID id) {
         return repository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("BiometricVerification", id));
-    }
-
-    private EkYcCreateRequest buildEkYcRequest(BiometricVerification verification) {
-        return new EkYcCreateRequest(
-                properties.getNotificationCallbackUrl(),
-                EKYC_REASON,
-                EKYC_AGENT_ID_NUMBER,
-                EKYC_AGENT_ID_TYPE,
-                verification.getSubjectIdNumber(),
-                verification.getSubjectIdType(),
-                verification.getId().toString(),
-                EKYC_EXPIRES_IN_SECONDS,
-                EKYC_SERVICE_ID,
-                EKYC_TOTAL_ATTEMPTS,
-                EKYC_REQUEST_MODE,
-                EKYC_POOR_QUALITY_RESULT_ATTEMPTS,
-                EKYC_LOCATION_NAME,
-                verification.getWorkstationId(),
-                EKYC_DEVICE_ID,
-                EKYC_DEVICE_NAME
-        );
     }
 }

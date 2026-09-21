@@ -1,7 +1,7 @@
 package com.travel.insurance.biometric;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.travel.insurance.biometric.dto.BiometricCallbackPayload;
-import com.travel.insurance.config.EkYcProperties;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -9,6 +9,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -18,25 +19,37 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class BiometricWebhookController {
 
+    private static final String TIMESTAMP_HEADER = "x-webhook-timestamp";
+    private static final String SIGNATURE_HEADER = "x-webhook-signature";
+
     private final BiometricVerificationService biometricVerificationService;
-    private final SecureHashVerifier secureHashVerifier;
-    private final EkYcProperties properties;
+    private final MicroserviceWebhookSignatureVerifier webhookSignatureVerifier;
+    private final ObjectMapper objectMapper;
 
     @PostMapping
-    public ResponseEntity<Void> receive(@RequestBody(required = false) BiometricCallbackPayload payload,
+    public ResponseEntity<Void> receive(@RequestBody(required = false) String rawBody,
+                                        @RequestHeader(value = TIMESTAMP_HEADER, required = false) String webhookTimestamp,
+                                        @RequestHeader(value = SIGNATURE_HEADER, required = false) String webhookSignature,
                                         HttpServletRequest request) {
-        log.info("Received biometric verification webhook callback from ip={}: {}",
-                request.getRemoteAddr(), payload);
+        String remoteAddr = request.getRemoteAddr();
+        log.info("Received biometric verification webhook callback from ip={}", remoteAddr);
 
-        if (payload == null) {
-            log.warn("Biometric webhook received empty or null payload from ip={}", request.getRemoteAddr());
+        if (rawBody == null || rawBody.isBlank()) {
+            log.warn("Biometric webhook received empty or null payload from ip={}", remoteAddr);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
         }
 
-        if (!secureHashVerifier.isValid(payload)) {
-            log.warn("Biometric webhook secure hash validation failed for requestId={}, payload={}",
-                    payload.requestId(), payload);
+        if (!webhookSignatureVerifier.isValid(rawBody, webhookTimestamp, webhookSignature)) {
+            log.warn("Biometric webhook signature verification failed from ip={}", remoteAddr);
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        BiometricCallbackPayload payload;
+        try {
+            payload = objectMapper.readValue(rawBody, BiometricCallbackPayload.class);
+        } catch (Exception e) {
+            log.warn("Biometric webhook payload could not be parsed from ip={}: {}", remoteAddr, e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
         }
 
         try {
